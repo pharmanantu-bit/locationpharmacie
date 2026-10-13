@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# locationenpharmacie.com
 
-## Getting Started
+Suivi des locations de matériel médical pour les pharmacies d'officine (multi-pharmacies).
 
-First, run the development server:
+Next.js 16 · Prisma 6 · PostgreSQL · Tailwind 4
+
+## Lancer en local
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npx prisma dev -n lep        # base PostgreSQL locale (laisser tourner dans un terminal)
+npx prisma migrate dev       # crée / met à jour les tables
+npm run dev -- -p 3100       # http://localhost:3100
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Test de bout en bout (serveur lancé) : `node scripts/smoke.mjs`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Feuille de route
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Socle** : comptes pharmacie et équipe, dossiers, parc, patients, alertes de retard et de facturation ✅
+2. SMS de rappel de fin de contrat
+3. Contrat PDF pré-rempli et signature au comptoir
+4. Caution par empreinte bancaire (Stripe Connect)
+5. Contrôle des factures fournisseurs par IA (rapprochement par n° de BL)
+6. Facturation des pharmacies clientes, inscription publique, annuaire
 
-## Learn More
+## Production
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Données de santé : hébergement obligatoirement **certifié HDS** (ex. Clever Cloud, Scaleway, OVHcloud).
+Ne pas déployer sur Vercel / Neon avec de vraies données patients.

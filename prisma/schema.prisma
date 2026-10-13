@@ -1,0 +1,192 @@
+// Modèle multi-pharmacies : toute donnée métier porte un pharmacyId
+// et n'est jamais lue sans filtrer dessus (voir src/lib/auth.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+model Pharmacy {
+  id         String   @id @default(cuid())
+  name       String
+  address    String?
+  postalCode String?
+  city       String?
+  phone      String?
+  email      String?
+  createdAt  DateTime @default(now())
+
+  // Compteur pour numéroter les dossiers (LOC-2026-0001)
+  rentalCounter Int @default(0)
+
+  users          User[]
+  equipmentTypes EquipmentType[]
+  equipment      Equipment[]
+  patients       Patient[]
+  rentals        Rental[]
+}
+
+enum Role {
+  OWNER
+  MEMBER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(MEMBER)
+  pharmacyId   String
+  pharmacy     Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  sessions Session[]
+  events   RentalEvent[]
+}
+
+model Session {
+  // On stocke le hash SHA-256 du jeton, jamais le jeton lui-même
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum BillingPeriod {
+  WEEKLY
+  MONTHLY
+  ONE_OFF
+}
+
+model EquipmentType {
+  id                  String        @id @default(cuid())
+  pharmacyId          String
+  pharmacy            Pharmacy      @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  name                String
+  billingPeriod       BillingPeriod @default(WEEKLY)
+  defaultDurationDays Int?
+  depositCents        Int?
+  archived            Boolean       @default(false)
+
+  equipment Equipment[]
+  rentals   Rental[]
+
+  @@unique([pharmacyId, name])
+}
+
+enum EquipmentStatus {
+  AVAILABLE
+  RENTED
+  MAINTENANCE
+  RETIRED
+}
+
+enum Ownership {
+  PHARMACY
+  SUPPLIER
+}
+
+model Equipment {
+  id           String          @id @default(cuid())
+  pharmacyId   String
+  pharmacy     Pharmacy        @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  typeId       String
+  type         EquipmentType   @relation(fields: [typeId], references: [id])
+  label        String
+  serialNumber String?
+  ownership    Ownership       @default(PHARMACY)
+  supplier     String?
+  status       EquipmentStatus @default(AVAILABLE)
+  notes        String?
+  createdAt    DateTime        @default(now())
+
+  rentals Rental[]
+
+  @@index([pharmacyId, status])
+}
+
+model Patient {
+  id         String    @id @default(cuid())
+  pharmacyId String
+  pharmacy   Pharmacy  @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  firstName  String
+  lastName   String
+  phone      String?
+  email      String?
+  address    String?
+  birthDate  DateTime?
+  notes      String?
+  createdAt  DateTime  @default(now())
+
+  rentals Rental[]
+
+  @@index([pharmacyId, lastName])
+}
+
+enum RentalStatus {
+  DRAFT // En création
+  ORDERED // Commandé au fournisseur
+  ACTIVE // En cours chez le patient
+  TO_CLOSE // Matériel rendu, reste à clôturer
+  CLOSED
+  CANCELLED
+}
+
+model Rental {
+  id         String       @id @default(cuid())
+  pharmacyId String
+  pharmacy   Pharmacy     @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  number     String
+  status     RentalStatus @default(DRAFT)
+
+  patientId   String
+  patient     Patient       @relation(fields: [patientId], references: [id])
+  typeId      String
+  type        EquipmentType @relation(fields: [typeId], references: [id])
+  equipmentId String?
+  equipment   Equipment?    @relation(fields: [equipmentId], references: [id])
+
+  prescriber       String?
+  prescriptionDate DateTime?
+  startDate        DateTime?
+  plannedEndDate   DateTime?
+  returnDate       DateTime?
+
+  // Fournisseur et n° de BL : servent au rapprochement des factures (phase 5)
+  supplier           String?
+  deliveryNoteNumber String?
+
+  billingPeriod BillingPeriod
+  billedUntil   DateTime?
+  depositCents  Int?
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events RentalEvent[]
+
+  @@unique([pharmacyId, number])
+  @@index([pharmacyId, status])
+}
+
+model RentalEvent {
+  id        String   @id @default(cuid())
+  rentalId  String
+  rental    Rental   @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([rentalId])
+}
