@@ -1,10 +1,10 @@
 "use client";
 
-import type { BillingPeriod } from "@prisma/client";
-import { useActionState } from "react";
+import type { BillingPeriod, RentalSource } from "@prisma/client";
+import { useActionState, useState } from "react";
 import { Field, FormError, Notice } from "@/components/ui";
-import { BILLING_LABELS } from "@/lib/rentals";
-import { markReturned, startRental, updateRental } from "../actions";
+import { BILLING_LABELS, SOURCE_LABELS } from "@/lib/rentals";
+import { markReturned, startRental, updateRental, uploadPrescription } from "../actions";
 
 export function StartForm({
   rentalId,
@@ -62,14 +62,19 @@ export function ReturnForm({
     <form action={action} className="space-y-4">
       <input type="hidden" name="rentalId" value={rentalId} />
       <FormError message={state?.error} />
-      <div className="flex flex-wrap items-end gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Rendu le">
           <input name="returnDate" type="date" required defaultValue={today} className="input" />
         </Field>
         {hasEquipment && (
-          <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+          <Field label="État constaté au retour">
+            <input name="condition" className="input" placeholder="Bon état, pièce manquante…" />
+          </Field>
+        )}
+        {hasEquipment && (
+          <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
             <input type="checkbox" name="needsService" defaultChecked className="size-4 accent-brand-700" />
-            À nettoyer / réviser avant la prochaine location
+            À nettoyer / désinfecter avant la prochaine location
           </label>
         )}
       </div>
@@ -80,10 +85,36 @@ export function ReturnForm({
   );
 }
 
+export function PrescriptionUploadForm({ rentalId, hasDocument }: { rentalId: string; hasDocument: boolean }) {
+  const [state, action, pending] = useActionState(uploadPrescription, undefined);
+  const [fileName, setFileName] = useState("");
+  return (
+    <form action={action} className="space-y-3">
+      <input type="hidden" name="rentalId" value={rentalId} />
+      <FormError message={state?.error} />
+      {state?.ok && <Notice>Ordonnance enregistrée.</Notice>}
+      <input
+        type="file"
+        name="prescriptionFile"
+        required
+        accept="application/pdf,image/jpeg,image/png,image/webp"
+        onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
+        className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-50"
+      />
+      <button className="btn-secondary" disabled={pending || !fileName}>
+        {pending ? "Envoi…" : hasDocument ? "Ajouter une nouvelle version" : "Joindre l'ordonnance"}
+      </button>
+    </form>
+  );
+}
+
 type EditableRental = {
   id: string;
+  source: RentalSource;
   prescriber: string | null;
   prescriptionDate: string;
+  prescriptionDurationDays: string;
+  prescriptionExpiresAt: string;
   startDate: string;
   plannedEndDate: string;
   supplier: string | null;
@@ -95,29 +126,62 @@ type EditableRental = {
 
 export function EditRentalForm({ rental, readOnly }: { rental: EditableRental; readOnly: boolean }) {
   const [state, action, pending] = useActionState(updateRental, undefined);
+  const [source, setSource] = useState<RentalSource>(rental.source);
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="rentalId" value={rental.id} />
       <FormError message={state?.error} />
-      {state && !state.error && <Notice>Modifications enregistrées.</Notice>}
+      {state?.ok && <Notice>Modifications enregistrées.</Notice>}
       <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2">
+        <Field label="Source du matériel">
+          <select
+            name="source"
+            value={source}
+            onChange={(e) => setSource(e.target.value as RentalSource)}
+            className="input"
+          >
+            {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {source === "SUPPLIER" ? (
+          <>
+            <Field label="Fournisseur">
+              <input name="supplier" defaultValue={rental.supplier ?? ""} className="input" />
+            </Field>
+            <Field label="N° de bon de livraison">
+              <input name="deliveryNoteNumber" defaultValue={rental.deliveryNoteNumber ?? ""} className="input" />
+            </Field>
+          </>
+        ) : (
+          <div className="hidden sm:block" />
+        )}
         <Field label="Prescripteur">
           <input name="prescriber" defaultValue={rental.prescriber ?? ""} className="input" />
         </Field>
         <Field label="Date de l'ordonnance">
           <input name="prescriptionDate" type="date" defaultValue={rental.prescriptionDate} className="input" />
         </Field>
+        <Field label="Durée prescrite (jours)">
+          <input
+            name="prescriptionDurationDays"
+            type="number"
+            min={1}
+            defaultValue={rental.prescriptionDurationDays}
+            className="input"
+          />
+        </Field>
+        <Field label="Ordonnance valable jusqu'au">
+          <input name="prescriptionExpiresAt" type="date" defaultValue={rental.prescriptionExpiresAt} className="input" />
+        </Field>
         <Field label="Début">
           <input name="startDate" type="date" defaultValue={rental.startDate} className="input" />
         </Field>
         <Field label="Fin prévue" hint="Modifiez-la pour prolonger la location.">
           <input name="plannedEndDate" type="date" defaultValue={rental.plannedEndDate} className="input" />
-        </Field>
-        <Field label="Fournisseur">
-          <input name="supplier" defaultValue={rental.supplier ?? ""} className="input" />
-        </Field>
-        <Field label="N° de bon de livraison">
-          <input name="deliveryNoteNumber" defaultValue={rental.deliveryNoteNumber ?? ""} className="input" />
         </Field>
         <Field label="Facturation">
           <select name="billingPeriod" defaultValue={rental.billingPeriod} className="input">
@@ -128,7 +192,7 @@ export function EditRentalForm({ rental, readOnly }: { rental: EditableRental; r
             ))}
           </select>
         </Field>
-        <Field label="Caution (€)">
+        <Field label="Caution convenue (€)">
           <input name="deposit" inputMode="decimal" defaultValue={rental.deposit} className="input" />
         </Field>
         <div className="sm:col-span-2">

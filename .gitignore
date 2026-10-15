@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# fichiers uploadés en dev (ordonnances, contrats) — voir src/lib/storage.ts
+/storage

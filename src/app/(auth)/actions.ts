@@ -4,19 +4,11 @@ import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSession, destroySession } from "@/lib/auth";
+import { DEFAULT_TYPE_SLUGS } from "@/lib/catalogue";
+import { ensureCatalogue } from "@/lib/catalogue-server";
 import { db } from "@/lib/db";
 
 export type AuthState = { error?: string; email?: string } | undefined;
-
-const DEFAULT_TYPES = [
-  "Aérosol",
-  "Tire-lait",
-  "Déambulateur",
-  "Fauteuil roulant",
-  "Lit médicalisé",
-  "Neurostimulateur (TENS)",
-  "Béquilles",
-];
 
 const signupSchema = z.object({
   pharmacyName: z.string().trim().min(2, "Indiquez le nom de la pharmacie."),
@@ -38,12 +30,17 @@ export async function signup(_prev: AuthState, formData: FormData): Promise<Auth
 
   const passwordHash = await bcrypt.hash(data.password, 12);
   const user = await db.$transaction(async (tx) => {
+    // Les types par défaut sont rattachés au catalogue commun (annuaire public)
+    const catalogue = await ensureCatalogue(tx);
+    const defaults = DEFAULT_TYPE_SLUGS.map((slug) => catalogue.find((c) => c.slug === slug)).filter(
+      (c): c is NonNullable<typeof c> => !!c,
+    );
     const pharmacy = await tx.pharmacy.create({
       data: {
         name: data.pharmacyName,
         city: data.city || null,
         email: data.email,
-        equipmentTypes: { create: DEFAULT_TYPES.map((name) => ({ name })) },
+        equipmentTypes: { create: defaults.map((c) => ({ name: c.name, catalogueId: c.id })) },
       },
     });
     return tx.user.create({

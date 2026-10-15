@@ -13,6 +13,8 @@ type Initial = {
   ownership: Ownership;
   supplier: string | null;
   status: EquipmentStatus;
+  purchaseDate: string;
+  condition: string | null;
   notes: string | null;
 };
 
@@ -66,9 +68,15 @@ export function EquipmentForm({
             <input name="supplier" defaultValue={initial?.supplier ?? ""} className="input" />
           </Field>
         )}
+        <Field label="Date d'achat">
+          <input name="purchaseDate" type="date" defaultValue={initial?.purchaseDate ?? ""} className="input" />
+        </Field>
+        <Field label="État" hint="Neuf, bon état, rayé, pièce manquante…">
+          <input name="condition" defaultValue={initial?.condition ?? ""} className="input" />
+        </Field>
         {initial && (
           <Field
-            label="État"
+            label="Statut"
             hint={initial.status === "RENTED" ? "Géré par le dossier de location en cours." : undefined}
           >
             <select name="status" defaultValue={initial.status} disabled={initial.status === "RENTED"} className="input">

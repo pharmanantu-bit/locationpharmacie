@@ -36,11 +36,14 @@ export async function updatePharmacy(_prev: SettingsFormState, formData: FormDat
   return { ok: "Informations enregistrées." };
 }
 
-function readType(formData: FormData) {
+async function readType(formData: FormData) {
   const billingPeriod = text(formData, "billingPeriod") as BillingPeriod;
   const duration = Number(text(formData, "defaultDurationDays"));
+  const catalogueId = text(formData, "catalogueId");
+  const catalogue = catalogueId ? await db.catalogueItem.findUnique({ where: { id: catalogueId } }) : null;
   return {
     name: text(formData, "name"),
+    catalogueId: catalogue?.id ?? null,
     billingPeriod: BILLING_PERIODS.includes(billingPeriod) ? billingPeriod : "WEEKLY",
     defaultDurationDays: Number.isInteger(duration) && duration > 0 ? duration : null,
     depositCents: parseEuros(formData.get("deposit")),
@@ -49,7 +52,7 @@ function readType(formData: FormData) {
 
 export async function createType(_prev: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
   const user = await requireOwner();
-  const data = readType(formData);
+  const data = await readType(formData);
   if (!data.name) return { error: "Indiquez le nom du type de matériel." };
   const exists = await db.equipmentType.findFirst({ where: { pharmacyId: user.pharmacyId, name: data.name } });
   if (exists) return { error: "Ce type existe déjà." };
@@ -64,7 +67,7 @@ export async function updateType(formData: FormData) {
     where: { id: String(formData.get("typeId")), pharmacyId: user.pharmacyId },
   });
   if (!type) return;
-  const data = readType(formData);
+  const data = await readType(formData);
   await db.equipmentType.update({
     where: { id: type.id },
     data: { ...data, name: data.name ?? type.name },

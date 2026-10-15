@@ -22,13 +22,13 @@ export default async function NewRentalPage({ searchParams }: PageProps<"/app/do
     db.patient.findMany({
       where: { pharmacyId: user.pharmacyId },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      select: { id: true, firstName: true, lastName: true, phone: true },
+      select: { id: true, firstName: true, lastName: true, phone: true, smsConsent: true },
     }),
   ]);
 
   return (
     <>
-      <PageHeader title="Nouveau dossier" subtitle="À partir de l'ordonnance du patient." />
+      <PageHeader title="Nouveau dossier de location" subtitle="Patient, matériel, source, ordonnance : trois étapes puis création." />
       <NewRentalForm
         types={types.map((t) => ({
           id: t.id,

@@ -14,6 +14,8 @@ type PharmacyValues = {
   email: string;
 };
 
+export type CatalogueOption = { id: string; name: string; category: string };
+
 export function PharmacyForm({ pharmacy }: { pharmacy: PharmacyValues }) {
   const [state, action, pending] = useActionState(updatePharmacy, undefined);
   return (
@@ -49,17 +51,17 @@ export function PharmacyForm({ pharmacy }: { pharmacy: PharmacyValues }) {
   );
 }
 
-export function NewTypeForm() {
+export function NewTypeForm({ catalogue }: { catalogue: CatalogueOption[] }) {
   const [state, action, pending] = useActionState(createType, undefined);
   return (
     <form action={action} className="space-y-3">
       <FormError message={state?.error} />
       {state?.ok && <Notice>{state.ok}</Notice>}
-      <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr_auto] sm:items-end">
+      <div className="grid gap-3 sm:grid-cols-[2fr_2fr_1fr_1fr_1fr_auto] sm:items-end">
         <Field label="Nouveau type">
           <input name="name" required className="input" placeholder="Ex. Pèse-bébé" />
         </Field>
-        <TypeFields />
+        <TypeFields catalogue={catalogue} />
         <button className="btn-secondary" disabled={pending}>
           Ajouter
         </button>
@@ -69,16 +71,37 @@ export function NewTypeForm() {
 }
 
 export function TypeFields({
+  catalogue,
+  catalogueId = "",
   billingPeriod = "WEEKLY",
   defaultDurationDays = "",
   deposit = "",
 }: {
+  catalogue: CatalogueOption[];
+  catalogueId?: string;
   billingPeriod?: string;
   defaultDurationDays?: string;
   deposit?: string;
 }) {
+  const categories = Array.from(new Set(catalogue.map((c) => c.category)));
   return (
     <>
+      <Field label="Catalogue commun" hint="Pour l'annuaire public.">
+        <select name="catalogueId" defaultValue={catalogueId} className="input">
+          <option value="">Non rattaché</option>
+          {categories.map((cat) => (
+            <optgroup key={cat} label={cat}>
+              {catalogue
+                .filter((c) => c.category === cat)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </optgroup>
+          ))}
+        </select>
+      </Field>
       <Field label="Facturation">
         <select name="billingPeriod" defaultValue={billingPeriod} className="input">
           {Object.entries(BILLING_LABELS).map(([value, label]) => (

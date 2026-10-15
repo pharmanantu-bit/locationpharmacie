@@ -5,7 +5,7 @@ import { EmptyState, PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { addDays, todayUTC } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { isBillingDue, isLate, OPEN_STATUSES } from "@/lib/rentals";
+import { isBillingDue, isLate, OPEN_STATUSES, prescriptionState } from "@/lib/rentals";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
 
@@ -34,6 +34,10 @@ export default async function DashboardPage() {
   const toBill = open.filter((r) => isBillingDue(r, today));
   const toPrepare = open.filter((r) => r.status === "DRAFT" || r.status === "ORDERED");
   const toClose = open.filter((r) => r.status === "TO_CLOSE");
+  const prescriptionIssue = open.filter((r) => {
+    const p = prescriptionState(r, today);
+    return p === "expired" || p === "expiring";
+  });
   const active = open.filter((r) => r.status === "ACTIVE");
 
   const stats = [
@@ -41,6 +45,12 @@ export default async function DashboardPage() {
     { label: "En retard", value: late.length, href: "/app/dossiers?filtre=retard", alert: late.length > 0 },
     { label: "Fin sous 7 jours", value: endingSoon.length, href: "/app/dossiers?filtre=fin-proche" },
     { label: "À facturer", value: toBill.length, href: "/app/dossiers?filtre=a-facturer", alert: toBill.length > 0 },
+    {
+      label: "Ordonnances à renouveler",
+      value: prescriptionIssue.length,
+      href: "/app/dossiers?filtre=ordonnance",
+      alert: prescriptionIssue.length > 0,
+    },
   ];
 
   return (
@@ -55,7 +65,7 @@ export default async function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {stats.map((s) => (
           <Link key={s.label} href={s.href} className="card p-4 transition hover:border-slate-300">
             <p className="text-sm text-slate-500">{s.label}</p>
@@ -80,6 +90,7 @@ export default async function DashboardPage() {
           <Section title="En retard de restitution" rentals={late} />
           <Section title="À facturer dans le LGO" rentals={toBill} />
           <Section title="Fin de contrat dans les 7 jours" rentals={endingSoon} />
+          <Section title="Ordonnance expirée ou expirant sous 7 jours" rentals={prescriptionIssue} />
           <Section title="À préparer (en création ou commandés)" rentals={toPrepare} />
           <Section title="Matériel rendu, à clôturer" rentals={toClose} />
         </div>
@@ -90,11 +101,13 @@ export default async function DashboardPage() {
         {types.map((t) => {
           const available = t.equipment.filter((e) => e.status === "AVAILABLE").length;
           const rented = t.equipment.filter((e) => e.status === "RENTED").length;
+          const cleaning = t.equipment.filter((e) => e.status === "CLEANING").length;
           return (
             <Link key={t.id} href={`/app/parc?type=${t.id}`} className="card p-4 transition hover:border-slate-300">
               <p className="text-sm font-medium text-slate-900">{t.name}</p>
               <p className="mt-1 text-sm text-slate-500">
                 <span className="font-medium text-emerald-700">{available} dispo</span> · {rented} en location
+                {cleaning > 0 && ` · ${cleaning} à nettoyer`}
               </p>
             </Link>
           );

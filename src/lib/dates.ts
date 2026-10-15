@@ -52,3 +52,9 @@ export function parseEuros(value: FormDataEntryValue | null): number | null {
   const n = Number(value.replace(",", ".").replace(/\s/g, ""));
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
 }
+
+// "Jeudi 15 octobre 2026"
+export function formatLongDay(date: Date): string {
+  const s = date.toLocaleDateString("fr-FR", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}

@@ -1,5 +1,13 @@
 // Modèle multi-pharmacies : toute donnée métier porte un pharmacyId
 // et n'est jamais lue sans filtrer dessus (voir src/lib/auth.ts).
+//
+// Phases prévues par le cahier des charges :
+//   1 parcours 6 étapes + ordonnance   (ce schéma)
+//   2 contrat PDF                      (Document kind=CONTRACT)
+//   3 caution Stripe Connect           (Deposit, DepositCharge, Pharmacy.stripeAccountId)
+//   4 rappels SMS Brevo                (Notification, Patient.smsConsent)
+//   5 annuaire public                  (CatalogueItem, Pharmacy.publicListing / slug)
+//   6 facturation 5 € / dossier        (Pharmacy.plan, compteur Rental.billedToPlatformAt)
 
 generator client {
   provider = "prisma-client-js"
@@ -9,6 +17,30 @@ datasource db {
   provider          = "postgresql"
   url               = env("DATABASE_URL")
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue commun à toutes les pharmacies (annuaire public, commandes fournisseurs)
+// ---------------------------------------------------------------------------
+
+model CatalogueItem {
+  id        String  @id @default(cuid())
+  slug      String  @unique
+  name      String
+  category  String
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+
+  equipmentTypes EquipmentType[]
+}
+
+// ---------------------------------------------------------------------------
+// Pharmacie, équipe
+// ---------------------------------------------------------------------------
+
+enum Plan {
+  PER_RENTAL // 5 € par nouveau dossier
+  UNLIMITED // abonnement mensuel
 }
 
 model Pharmacy {
@@ -24,11 +56,24 @@ model Pharmacy {
   // Compteur pour numéroter les dossiers (LOC-2026-0001)
   rentalCounter Int @default(0)
 
-  users          User[]
-  equipmentTypes EquipmentType[]
-  equipment      Equipment[]
-  patients       Patient[]
-  rentals        Rental[]
+  // Phase 3 : compte Stripe Connect de la pharmacie
+  stripeAccountId String?
+  // Phase 5 : annuaire public
+  publicListing   Boolean @default(false)
+  slug            String? @unique
+  // Phase 6 : modèle économique
+  plan            Plan    @default(PER_RENTAL)
+
+  users           User[]
+  equipmentTypes  EquipmentType[]
+  equipment       Equipment[]
+  equipmentEvents EquipmentEvent[]
+  patients        Patient[]
+  rentals         Rental[]
+  documents       Document[]
+  deposits        Deposit[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
 }
 
 enum Role {
@@ -46,8 +91,12 @@ model User {
   pharmacy     Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
 
-  sessions Session[]
-  events   RentalEvent[]
+  sessions        Session[]
+  events          RentalEvent[]
+  equipmentEvents EquipmentEvent[]
+  documents       Document[]
+  depositCharges  DepositCharge[]
+  auditLogs       AuditLog[]
 }
 
 model Session {
@@ -61,6 +110,10 @@ model Session {
   @@index([userId])
 }
 
+// ---------------------------------------------------------------------------
+// Parc de matériel
+// ---------------------------------------------------------------------------
+
 enum BillingPeriod {
   WEEKLY
   MONTHLY
@@ -68,24 +121,28 @@ enum BillingPeriod {
 }
 
 model EquipmentType {
-  id                  String        @id @default(cuid())
+  id                  String         @id @default(cuid())
   pharmacyId          String
-  pharmacy            Pharmacy      @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  pharmacy            Pharmacy       @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
   name                String
-  billingPeriod       BillingPeriod @default(WEEKLY)
+  catalogueId         String?
+  catalogue           CatalogueItem? @relation(fields: [catalogueId], references: [id], onDelete: SetNull)
+  billingPeriod       BillingPeriod  @default(WEEKLY)
   defaultDurationDays Int?
   depositCents        Int?
-  archived            Boolean       @default(false)
+  archived            Boolean        @default(false)
 
   equipment Equipment[]
   rentals   Rental[]
 
   @@unique([pharmacyId, name])
+  @@index([catalogueId])
 }
 
 enum EquipmentStatus {
   AVAILABLE
   RENTED
+  CLEANING
   MAINTENANCE
   RETIRED
 }
@@ -96,41 +153,86 @@ enum Ownership {
 }
 
 model Equipment {
-  id           String          @id @default(cuid())
-  pharmacyId   String
-  pharmacy     Pharmacy        @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
-  typeId       String
-  type         EquipmentType   @relation(fields: [typeId], references: [id])
-  label        String
-  serialNumber String?
-  ownership    Ownership       @default(PHARMACY)
-  supplier     String?
-  status       EquipmentStatus @default(AVAILABLE)
-  notes        String?
-  createdAt    DateTime        @default(now())
+  id            String          @id @default(cuid())
+  pharmacyId    String
+  pharmacy      Pharmacy        @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  typeId        String
+  type          EquipmentType   @relation(fields: [typeId], references: [id])
+  label         String
+  serialNumber  String?
+  ownership     Ownership       @default(PHARMACY)
+  supplier      String?
+  status        EquipmentStatus @default(AVAILABLE)
+  purchaseDate  DateTime?
+  condition     String?
+  lastCleanedAt DateTime?
+  notes         String?
+  createdAt     DateTime        @default(now())
 
   rentals Rental[]
+  events  EquipmentEvent[]
 
   @@index([pharmacyId, status])
 }
 
-model Patient {
-  id         String    @id @default(cuid())
-  pharmacyId String
-  pharmacy   Pharmacy  @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
-  firstName  String
-  lastName   String
-  phone      String?
-  email      String?
-  address    String?
-  birthDate  DateTime?
-  notes      String?
-  createdAt  DateTime  @default(now())
+enum EquipmentEventKind {
+  CREATED
+  RENTED
+  RETURNED
+  CLEANED
+  MAINTENANCE_START
+  MAINTENANCE_END
+  STATUS_CHANGED
+  NOTE
+}
 
-  rentals Rental[]
+// Historique de vie d'un appareil : où il est, qui l'a eu, quand il a été désinfecté
+model EquipmentEvent {
+  id          String             @id @default(cuid())
+  pharmacyId  String
+  pharmacy    Pharmacy           @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  equipmentId String
+  equipment   Equipment          @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  rentalId    String?
+  rental      Rental?            @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+  userId      String?
+  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  kind        EquipmentEventKind
+  message     String
+  createdAt   DateTime           @default(now())
+
+  @@index([equipmentId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Patients
+// ---------------------------------------------------------------------------
+
+model Patient {
+  id           String    @id @default(cuid())
+  pharmacyId   String
+  pharmacy     Pharmacy  @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  firstName    String
+  lastName     String
+  phone        String?
+  email        String?
+  address      String?
+  birthDate    DateTime?
+  notes        String?
+  // Consentement aux SMS de suivi (RGPD)
+  smsConsent   Boolean   @default(false)
+  smsConsentAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  rentals       Rental[]
+  notifications Notification[]
 
   @@index([pharmacyId, lastName])
 }
+
+// ---------------------------------------------------------------------------
+// Dossiers de location
+// ---------------------------------------------------------------------------
 
 enum RentalStatus {
   DRAFT // En création
@@ -139,6 +241,11 @@ enum RentalStatus {
   TO_CLOSE // Matériel rendu, reste à clôturer
   CLOSED
   CANCELLED
+}
+
+enum RentalSource {
+  PHARMACY_STOCK // Appareil du parc de la pharmacie
+  SUPPLIER // Commandé auprès d'un fournisseur
 }
 
 model Rental {
@@ -155,28 +262,42 @@ model Rental {
   equipmentId String?
   equipment   Equipment?    @relation(fields: [equipmentId], references: [id])
 
-  prescriber       String?
-  prescriptionDate DateTime?
-  startDate        DateTime?
-  plannedEndDate   DateTime?
-  returnDate       DateTime?
-
-  // Fournisseur et n° de BL : servent au rapprochement des factures (phase 5)
+  // Étape 2 : source du matériel
+  source             RentalSource @default(PHARMACY_STOCK)
+  // Fournisseur et n° de BL : servent au rapprochement des factures (roadmap)
   supplier           String?
   deliveryNoteNumber String?
+
+  // Étape 3 : ordonnance (le fichier est un Document kind=PRESCRIPTION)
+  prescriber               String?
+  prescriptionDate         DateTime?
+  prescriptionDurationDays Int?
+  prescriptionExpiresAt    DateTime?
+
+  startDate      DateTime?
+  plannedEndDate DateTime?
+  returnDate     DateTime?
 
   billingPeriod BillingPeriod
   billedUntil   DateTime?
   depositCents  Int?
   notes         String?
 
+  // Phase 6 : date de facturation du dossier à la plateforme (5 €)
+  billedToPlatformAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  events RentalEvent[]
+  events          RentalEvent[]
+  equipmentEvents EquipmentEvent[]
+  documents       Document[]
+  deposit         Deposit?
+  notifications   Notification[]
 
   @@unique([pharmacyId, number])
   @@index([pharmacyId, status])
+  @@index([pharmacyId, prescriptionExpiresAt])
 }
 
 model RentalEvent {
@@ -189,4 +310,146 @@ model RentalEvent {
   createdAt DateTime @default(now())
 
   @@index([rentalId])
+}
+
+// ---------------------------------------------------------------------------
+// Documents (ordonnances, contrats) : le fichier est dans le stockage (src/lib/storage.ts),
+// la base ne garde que la clé. Donnée de santé : hébergement HDS en production.
+// ---------------------------------------------------------------------------
+
+enum DocumentKind {
+  PRESCRIPTION
+  CONTRACT
+  OTHER
+}
+
+model Document {
+  id           String       @id @default(cuid())
+  pharmacyId   String
+  pharmacy     Pharmacy     @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  rentalId     String
+  rental       Rental       @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  kind         DocumentKind
+  storageKey   String       @unique
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String?
+  uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now())
+
+  @@index([rentalId, kind])
+}
+
+// ---------------------------------------------------------------------------
+// Caution par empreinte bancaire (phase 3, Stripe Connect + SetupIntent)
+// ---------------------------------------------------------------------------
+
+enum DepositStatus {
+  PENDING // lien envoyé, carte pas encore enregistrée
+  AUTHORIZED // empreinte enregistrée
+  CHARGED // tout ou partie débité
+  RELEASED // caution levée, plus aucun débit possible
+  FAILED
+}
+
+model Deposit {
+  id          String        @id @default(cuid())
+  pharmacyId  String
+  pharmacy    Pharmacy      @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  rentalId    String        @unique
+  rental      Rental        @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  amountCents Int
+  status      DepositStatus @default(PENDING)
+
+  // Lien / QR code envoyé au patient (jeton aléatoire, expire)
+  linkToken     String   @unique
+  linkExpiresAt DateTime
+
+  stripeCustomerId      String?
+  stripeSetupIntentId   String?
+  stripePaymentMethodId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  charges DepositCharge[]
+}
+
+model DepositCharge {
+  id                    String   @id @default(cuid())
+  depositId             String
+  deposit               Deposit  @relation(fields: [depositId], references: [id], onDelete: Cascade)
+  amountCents           Int
+  reason                String
+  stripePaymentIntentId String?
+  status                String // requires_confirmation | succeeded | failed
+  userId                String?
+  user                  User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt             DateTime @default(now())
+
+  @@index([depositId])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications SMS (phase 4, Brevo) : file d'envoi avec reprise sur erreur
+// ---------------------------------------------------------------------------
+
+enum NotificationKind {
+  READY_FOR_PICKUP
+  PRESCRIPTION_EXPIRING
+  PRESCRIPTION_EXPIRED
+  RETURN_DUE
+  RETURN_LATE
+  DEPOSIT_LINK
+  CUSTOM
+}
+
+enum NotificationStatus {
+  SCHEDULED
+  SENT
+  FAILED
+  CANCELLED
+}
+
+model Notification {
+  id          String             @id @default(cuid())
+  pharmacyId  String
+  pharmacy    Pharmacy           @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  rentalId    String?
+  rental      Rental?            @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  patientId   String?
+  patient     Patient?           @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  kind        NotificationKind
+  toPhone     String
+  body        String
+  status      NotificationStatus @default(SCHEDULED)
+  scheduledAt DateTime
+  sentAt      DateTime?
+  attempts    Int                @default(0)
+  lastError   String?
+  providerId  String?
+  createdAt   DateTime           @default(now())
+
+  @@index([status, scheduledAt])
+  @@index([rentalId])
+}
+
+// ---------------------------------------------------------------------------
+// Journal d'audit (HDS) : qui a consulté ou modifié quelle donnée de santé
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  pharmacyId String
+  pharmacy   Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String // document.view, document.upload, patient.update…
+  targetType String
+  targetId   String
+  createdAt  DateTime @default(now())
+
+  @@index([pharmacyId, createdAt])
+  @@index([targetType, targetId])
 }
