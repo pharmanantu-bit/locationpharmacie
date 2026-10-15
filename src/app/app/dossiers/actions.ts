@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { audit } from "@/lib/audit";
 import { requireUser, type CurrentUser } from "@/lib/auth";
+import { buildContractPdf } from "@/lib/contract";
 import { addDays, formatDay, parseDay, parseEuros, todayUTC } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { readUpload, storeDocument, UPLOAD_ERRORS } from "@/lib/documents";
@@ -163,6 +164,7 @@ export async function createRental(_prev: RentalFormState, formData: FormData): 
           startDate,
           plannedEndDate,
           billingPeriod,
+          priceCents: parseEuros(formData.get("price")) ?? type.priceCents,
           depositCents: parseEuros(formData.get("deposit")) ?? type.depositCents,
           notes: text(formData, "notes"),
         },
@@ -238,6 +240,7 @@ export async function updateRental(_prev: RentalFormState, formData: FormData): 
         startDate,
         plannedEndDate,
         billingPeriod,
+        priceCents: parseEuros(formData.get("price")),
         depositCents: parseEuros(formData.get("deposit")),
         notes: text(formData, "notes"),
       },
@@ -379,6 +382,46 @@ export async function markBilled(formData: FormData) {
         ? "Forfait facturé dans le LGO"
         : `Période facturée dans le LGO : du ${formatDay(from)} au ${formatDay(addDays(until, -1))}`,
     );
+  });
+  done(rental.id);
+}
+
+// Étape 5 : contrat de location PDF pré-rempli, conservé comme Document kind=CONTRACT.
+// Chaque génération crée une nouvelle version ; les précédentes restent consultables.
+export async function generateContract(formData: FormData) {
+  const user = await requireUser();
+  const rental = await db.rental.findFirst({
+    where: { id: String(formData.get("rentalId")), pharmacyId: user.pharmacyId },
+    include: {
+      pharmacy: true,
+      patient: true,
+      type: true,
+      equipment: true,
+      documents: { where: { kind: "CONTRACT" }, select: { id: true } },
+    },
+  });
+  if (!rental) throw new Error("Dossier introuvable.");
+  if (rental.status === "CANCELLED") throw new Error("Un dossier annulé n'a pas de contrat.");
+
+  const buffer = await buildContractPdf({
+    rental,
+    pharmacy: rental.pharmacy,
+    patient: rental.patient,
+    type: rental.type,
+    equipment: rental.equipment,
+  });
+  const version = rental.documents.length + 1;
+  const fileName = `contrat-${rental.number}${version > 1 ? `-v${version}` : ""}.pdf`;
+
+  await db.$transaction(async (tx) => {
+    const doc = await storeDocument(tx, user, rental.id, "CONTRACT", {
+      buffer,
+      mime: "application/pdf",
+      ext: "pdf",
+      fileName,
+    });
+    await audit(tx, user, "document.generate", "Document", doc.id);
+    await logEvent(tx, rental.id, user, `Contrat généré (${fileName})`);
   });
   done(rental.id);
 }

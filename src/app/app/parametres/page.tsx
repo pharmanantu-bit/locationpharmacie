@@ -32,7 +32,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/par
       <PageHeader title="Paramètres" />
 
       <div className="space-y-8">
-        <section className="card p-5">
+        <section id="pharmacie" className="card scroll-mt-6 p-5">
           <h2 className="mb-1 font-semibold text-slate-900">Pharmacie</h2>
           <p className="mb-4 text-sm text-slate-500">Ces informations apparaîtront sur les contrats de location.</p>
           <PharmacyForm
@@ -43,23 +43,27 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/par
               city: pharmacy.city ?? "",
               phone: pharmacy.phone ?? "",
               email: pharmacy.email ?? "",
+              siret: pharmacy.siret ?? "",
+              contractTerms: pharmacy.contractTerms ?? "",
             }}
           />
         </section>
 
-        <StripeSection
-          configured={isStripeConfigured()}
-          mode={stripeMode()}
-          accountId={pharmacy.stripeAccountId}
-          status={connectStatus}
-          flash={typeof stripeFlash === "string" ? stripeFlash : undefined}
-        />
+        <div id="stripe" className="scroll-mt-6">
+          <StripeSection
+            configured={isStripeConfigured()}
+            mode={stripeMode()}
+            accountId={pharmacy.stripeAccountId}
+            status={connectStatus}
+            flash={typeof stripeFlash === "string" ? stripeFlash : undefined}
+          />
+        </div>
 
-        <section className="card p-5">
+        <section id="types" className="card scroll-mt-6 p-5">
           <h2 className="mb-1 font-semibold text-slate-900">Types de matériel</h2>
           <p className="mb-4 text-sm text-slate-500">
-            Valeurs proposées par défaut à la création d&apos;un dossier : périodicité de facturation, durée habituelle
-            et montant de la caution. Le rattachement au catalogue commun servira à l&apos;annuaire public.
+            Valeurs proposées par défaut à la création d&apos;un dossier : périodicité de facturation, durée habituelle,
+            tarif par période et montant de la caution. Le rattachement au catalogue commun servira à l&apos;annuaire public.
           </p>
           <div className="space-y-3">
             {pharmacy.equipmentTypes.map((t) => (
@@ -69,7 +73,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/par
               >
                 <form
                   action={updateType}
-                  className="grid gap-3 sm:grid-cols-[2fr_2fr_1fr_1fr_1fr_auto] sm:items-end"
+                  className="grid gap-3 sm:grid-cols-[2fr_2fr_1fr_1fr_1fr_1fr_auto] sm:items-end"
                 >
                   <input type="hidden" name="typeId" value={t.id} />
                   <Field label="Nom">
@@ -80,6 +84,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/par
                     catalogueId={t.catalogueId ?? ""}
                     billingPeriod={t.billingPeriod}
                     defaultDurationDays={t.defaultDurationDays?.toString() ?? ""}
+                    price={t.priceCents != null ? String(t.priceCents / 100) : ""}
                     deposit={t.depositCents != null ? String(t.depositCents / 100) : ""}
                   />
                   <SubmitButton className="btn-secondary" pendingLabel="…">
@@ -100,7 +105,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/par
           </div>
         </section>
 
-        <section className="card p-5">
+        <section id="equipe" className="card scroll-mt-6 p-5">
           <h2 className="mb-1 font-semibold text-slate-900">Équipe</h2>
           <p className="mb-4 text-sm text-slate-500">
             Chaque membre de l&apos;équipe a son propre accès. Les actions sont tracées à son nom dans l&apos;historique

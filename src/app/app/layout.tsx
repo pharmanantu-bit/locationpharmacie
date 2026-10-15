@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { Logo } from "@/components/logo";
 import { todayUTC } from "@/lib/dates";
 import { db } from "@/lib/db";
+import { getOnboarding } from "@/lib/onboarding";
 import { isBillingDue, OPEN_STATUSES } from "@/lib/rentals";
 import { NavLinks, type NavBadges } from "./nav-links";
 import { logout } from "../(auth)/actions";
@@ -11,13 +12,14 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   const today = todayUTC();
 
   // Compteurs d'alertes affichés dans la barre latérale
-  const [late, toBill, cleaning] = await Promise.all([
+  const [late, toBill, cleaning, onboarding] = await Promise.all([
     db.rental.count({ where: { pharmacyId: user.pharmacyId, status: "ACTIVE", plannedEndDate: { lt: today } } }),
     db.rental.findMany({
       where: { pharmacyId: user.pharmacyId, status: { in: OPEN_STATUSES } },
       select: { status: true, startDate: true, billedUntil: true, billingPeriod: true, returnDate: true, plannedEndDate: true },
     }),
     db.equipment.count({ where: { pharmacyId: user.pharmacyId, status: "CLEANING" } }),
+    getOnboarding(user.pharmacyId),
   ]);
   const badges: NavBadges = {
     dossiers: late,
@@ -62,7 +64,11 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
           </label>
         </form>
 
-        <NavLinks isOwner={user.role === "OWNER"} badges={badges} />
+        <NavLinks
+          isOwner={user.role === "OWNER"}
+          badges={badges}
+          onboarding={{ done: onboarding.done, total: onboarding.total }}
+        />
 
         <div className="hidden border-t border-white/10 px-4 py-3 lg:mt-auto lg:block">
           <div className="flex items-center gap-3">

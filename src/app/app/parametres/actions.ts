@@ -30,6 +30,8 @@ export async function updatePharmacy(_prev: SettingsFormState, formData: FormDat
       city: text(formData, "city"),
       phone: text(formData, "phone"),
       email: text(formData, "email"),
+      siret: text(formData, "siret"),
+      contractTerms: text(formData, "contractTerms"),
     },
   });
   revalidatePath("/app", "layout");
@@ -46,6 +48,7 @@ async function readType(formData: FormData) {
     catalogueId: catalogue?.id ?? null,
     billingPeriod: BILLING_PERIODS.includes(billingPeriod) ? billingPeriod : "WEEKLY",
     defaultDurationDays: Number.isInteger(duration) && duration > 0 ? duration : null,
+    priceCents: parseEuros(formData.get("price")),
     depositCents: parseEuros(formData.get("deposit")),
   };
 }

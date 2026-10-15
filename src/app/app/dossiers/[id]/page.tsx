@@ -18,7 +18,7 @@ import {
   STATUS_LABELS,
   STATUS_TONES,
 } from "@/lib/rentals";
-import { addNote, cancelRental, closeRental, markBilled, markOrdered } from "../actions";
+import { addNote, cancelRental, closeRental, generateContract, markBilled, markOrdered } from "../actions";
 import { EditRentalForm, PrescriptionUploadForm, ReturnForm, StartForm } from "./rental-forms";
 
 export const metadata: Metadata = { title: "Dossier" };
@@ -51,7 +51,10 @@ export default async function RentalPage({ params }: PageProps<"/app/dossiers/[i
   const billUntil = billedUntilAfter(rental);
   const prescription = prescriptionState(rental, today);
   const prescriptions = rental.documents.filter((d) => d.kind === "PRESCRIPTION");
+  const contracts = rental.documents.filter((d) => d.kind === "CONTRACT");
   const closed = rental.status === "CLOSED" || rental.status === "CANCELLED";
+  // Le dossier a changé depuis le dernier contrat : proposer de le régénérer
+  const contractOutdated = contracts.length > 0 && rental.updatedAt > contracts[0].createdAt;
 
   const availableEquipment =
     rental.status === "DRAFT" || rental.status === "ORDERED"
@@ -95,7 +98,15 @@ export default async function RentalPage({ params }: PageProps<"/app/dossiers/[i
         ? `${formatEuros(rental.depositCents)} convenus · empreinte bancaire bientôt disponible`
         : "Montant à définir · empreinte bancaire bientôt disponible",
     },
-    contract: { state: "soon", detail: "Contrat PDF pré-rempli bientôt disponible" },
+    contract: {
+      state: contracts.length > 0 ? (contractOutdated ? "warn" : "done") : closed ? "done" : "todo",
+      detail:
+        contracts.length > 0
+          ? contractOutdated
+            ? `Généré le ${formatDay(contracts[0].createdAt)} · dossier modifié depuis`
+            : `Généré le ${formatDay(contracts[0].createdAt)} · à faire signer`
+          : "À générer puis à faire signer au patient",
+    },
     followup: {
       state: "soon",
       detail: rental.patient.smsConsent ? "Consentement SMS recueilli · rappels bientôt disponibles" : "Pas de consentement SMS",
@@ -266,6 +277,65 @@ export default async function RentalPage({ params }: PageProps<"/app/dossiers/[i
             {!closed && <PrescriptionUploadForm rentalId={rental.id} hasDocument={prescriptions.length > 0} />}
           </section>
 
+          {/* Contrat (étape 5) */}
+          {rental.status !== "CANCELLED" && (
+            <section className="card p-5">
+              <h2 className="mb-1 font-semibold text-slate-900">Contrat de location</h2>
+              <p className="mb-4 text-sm text-slate-500">
+                PDF pré-rempli avec les informations de la pharmacie, du patient, du matériel et de l&apos;ordonnance.
+                À imprimer en deux exemplaires et faire signer au patient.
+              </p>
+              {contracts.length > 0 ? (
+                <ul className="mb-4 divide-y divide-slate-100 rounded-lg border border-slate-200">
+                  {contracts.map((d, i) => (
+                    <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                      <div>
+                        <a
+                          href={`/app/documents/${d.id}`}
+                          target="_blank"
+                          rel="noopener"
+                          className="font-medium text-brand-700 hover:underline"
+                        >
+                          {d.fileName}
+                        </a>
+                        <span className="block text-xs text-slate-500">
+                          {formatDateTime(d.createdAt)}
+                          {i > 0 && " · version précédente"}
+                        </span>
+                      </div>
+                      {i === 0 && <Badge tone="bg-emerald-50 text-emerald-800 ring-emerald-200">Actuel</Badge>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                !closed && (
+                  <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    Aucun contrat généré.
+                    {(rental.status === "DRAFT" || rental.status === "ORDERED") &&
+                      " Attribuez l'appareil et fixez les dates avant de le générer : ils seront repris sur le contrat."}
+                  </p>
+                )
+              )}
+              {contractOutdated && !closed && (
+                <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Le dossier a été modifié depuis la génération du contrat. Régénérez-le si les informations reprises
+                  ont changé.
+                </p>
+              )}
+              {!closed && (
+                <form action={generateContract}>
+                  <input type="hidden" name="rentalId" value={rental.id} />
+                  <SubmitButton
+                    className={contracts.length > 0 ? "btn-secondary" : "btn-primary"}
+                    pendingLabel="Génération…"
+                  >
+                    {contracts.length > 0 ? "Régénérer le contrat" : "Générer le contrat"}
+                  </SubmitButton>
+                </form>
+              )}
+            </section>
+          )}
+
           <section className="card p-5">
             <h2 className="mb-4 font-semibold text-slate-900">Informations du dossier</h2>
             <EditRentalForm
@@ -281,6 +351,7 @@ export default async function RentalPage({ params }: PageProps<"/app/dossiers/[i
                 supplier: rental.supplier,
                 deliveryNoteNumber: rental.deliveryNoteNumber,
                 billingPeriod: rental.billingPeriod,
+                price: rental.priceCents != null ? String(rental.priceCents / 100) : "",
                 deposit: rental.depositCents != null ? String(rental.depositCents / 100) : "",
                 notes: rental.notes,
               }}
@@ -358,6 +429,7 @@ export default async function RentalPage({ params }: PageProps<"/app/dossiers/[i
             <h2 className="mb-3 font-semibold text-slate-900">Facturation LGO</h2>
             <dl className="space-y-1 text-slate-600">
               <Row label="Périodicité" value={BILLING_LABELS[rental.billingPeriod]} />
+              <Row label="Tarif" value={formatEuros(rental.priceCents)} />
               <Row
                 label="Facturé jusqu'au"
                 value={

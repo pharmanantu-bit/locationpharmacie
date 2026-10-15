@@ -11,6 +11,7 @@ type TypeOption = {
   name: string;
   billingPeriod: BillingPeriod;
   defaultDurationDays: number | null;
+  priceCents: number | null;
   depositCents: number | null;
 };
 type EquipmentOption = { id: string; typeId: string; label: string; serialNumber: string | null };
@@ -78,6 +79,7 @@ export function NewRentalForm({
   const [startDate, setStartDate] = useState(todayIso());
   const [plannedEndDate, setPlannedEndDate] = useState("");
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("WEEKLY");
+  const [price, setPrice] = useState("");
   const [deposit, setDeposit] = useState("");
 
   const matchingPatients = useMemo(() => {
@@ -106,6 +108,7 @@ export function NewRentalForm({
     const t = types.find((x) => x.id === id);
     if (!t) return;
     setBillingPeriod(t.billingPeriod);
+    setPrice(t.priceCents != null ? String(t.priceCents / 100) : "");
     setDeposit(t.depositCents != null ? String(t.depositCents / 100) : "");
     const d = t.defaultDurationDays ? String(t.defaultDurationDays) : "";
     setDuration(d);
@@ -519,6 +522,15 @@ export function NewRentalForm({
               ))}
             </select>
           </Field>
+          <Field label="Tarif (€ par période)" hint="Pré-rempli depuis le type ; repris sur le contrat.">
+            <input
+              name="price"
+              inputMode="decimal"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className="input"
+            />
+          </Field>
           <Field label="Caution convenue (€)" hint="Empreinte bancaire demandée au patient à l'étape 4.">
             <input
               name="deposit"
@@ -570,6 +582,7 @@ export function NewRentalForm({
           <Row label="Ordonnance" value={fileName || "Aucun fichier joint (à ajouter sur le dossier)"} />
           <Row label="Valable jusqu'au" value={formatIso(expiresAt)} />
           <Row label="Fin prévue" value={formatIso(plannedEndDate)} />
+          <Row label="Tarif" value={price ? `${price} € ${BILLING_LABELS[billingPeriod].toLowerCase()}` : "—"} />
           <Row label="Caution" value={deposit ? `${deposit} €` : "—"} />
         </dl>
         <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">

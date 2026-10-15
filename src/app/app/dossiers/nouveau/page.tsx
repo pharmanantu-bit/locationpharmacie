@@ -35,6 +35,7 @@ export default async function NewRentalPage({ searchParams }: PageProps<"/app/do
           name: t.name,
           billingPeriod: t.billingPeriod,
           defaultDurationDays: t.defaultDurationDays,
+          priceCents: t.priceCents,
           depositCents: t.depositCents,
         }))}
         equipment={equipment.map((e) => ({ id: e.id, typeId: e.typeId, label: e.label, serialNumber: e.serialNumber }))}

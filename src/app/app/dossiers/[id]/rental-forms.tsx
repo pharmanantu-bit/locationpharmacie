@@ -120,6 +120,7 @@ type EditableRental = {
   supplier: string | null;
   deliveryNoteNumber: string | null;
   billingPeriod: BillingPeriod;
+  price: string;
   deposit: string;
   notes: string | null;
 };
@@ -191,6 +192,9 @@ export function EditRentalForm({ rental, readOnly }: { rental: EditableRental; r
               </option>
             ))}
           </select>
+        </Field>
+        <Field label="Tarif (€ par période)" hint="Repris sur le contrat.">
+          <input name="price" inputMode="decimal" defaultValue={rental.price} className="input" />
         </Field>
         <Field label="Caution convenue (€)">
           <input name="deposit" inputMode="decimal" defaultValue={rental.deposit} className="input" />

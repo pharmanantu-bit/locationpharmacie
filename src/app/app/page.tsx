@@ -5,6 +5,7 @@ import { EmptyState, PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { addDays, todayUTC } from "@/lib/dates";
 import { db } from "@/lib/db";
+import { getOnboarding } from "@/lib/onboarding";
 import { isBillingDue, isLate, OPEN_STATUSES, prescriptionState } from "@/lib/rentals";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
@@ -14,7 +15,7 @@ export default async function DashboardPage() {
   const today = todayUTC();
   const inAWeek = addDays(today, 7);
 
-  const [open, types] = await Promise.all([
+  const [open, types, onboarding] = await Promise.all([
     db.rental.findMany({
       where: { pharmacyId: user.pharmacyId, status: { in: OPEN_STATUSES } },
       include: { patient: true, type: true, equipment: true },
@@ -25,6 +26,7 @@ export default async function DashboardPage() {
       include: { equipment: { where: { status: { not: "RETIRED" } }, select: { status: true } } },
       orderBy: { name: "asc" },
     }),
+    getOnboarding(user.pharmacyId),
   ]);
 
   const late = open.filter((r) => isLate(r, today));
@@ -64,6 +66,30 @@ export default async function DashboardPage() {
           </Link>
         }
       />
+
+      {onboarding.done < onboarding.total && (
+        <Link
+          href="/app/bien-demarrer"
+          className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm transition hover:border-brand-300"
+        >
+          <span className="font-semibold text-brand-900">Bien démarrer</span>
+          <span className="h-1.5 w-32 overflow-hidden rounded-full bg-white">
+            <span
+              className="block h-full rounded-full bg-brand-600"
+              style={{ width: `${Math.round((onboarding.done / onboarding.total) * 100)}%` }}
+            />
+          </span>
+          <span className="text-brand-800 tabular-nums">
+            {onboarding.done} sur {onboarding.total}
+          </span>
+          {onboarding.next && (
+            <span className="text-brand-800">
+              · Prochaine étape : <span className="font-medium">{onboarding.next.title}</span>
+            </span>
+          )}
+          <span className="ml-auto font-medium text-brand-700">Continuer →</span>
+        </Link>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {stats.map((s) => (

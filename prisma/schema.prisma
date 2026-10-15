@@ -44,14 +44,19 @@ enum Plan {
 }
 
 model Pharmacy {
-  id         String   @id @default(cuid())
-  name       String
-  address    String?
-  postalCode String?
-  city       String?
-  phone      String?
-  email      String?
-  createdAt  DateTime @default(now())
+  id             String   @id @default(cuid())
+  name           String
+  address        String?
+  postalCode     String?
+  city           String?
+  phone          String?
+  email          String?
+  // Mentions légales et conditions reprises sur le contrat de location (étape 5)
+  siret          String?
+  contractTerms  String?
+  // Guide « Bien démarrer » : étapes cochées à la main (les autres sont déduites des données)
+  onboardingDone String[] @default([])
+  createdAt      DateTime @default(now())
 
   // Compteur pour numéroter les dossiers (LOC-2026-0001)
   rentalCounter Int @default(0)
@@ -130,6 +135,8 @@ model EquipmentType {
   billingPeriod       BillingPeriod  @default(WEEKLY)
   defaultDurationDays Int?
   depositCents        Int?
+  // Tarif par période de facturation (pour le contrat)
+  priceCents          Int?
   archived            Boolean        @default(false)
 
   equipment Equipment[]
@@ -280,6 +287,7 @@ model Rental {
 
   billingPeriod BillingPeriod
   billedUntil   DateTime?
+  priceCents    Int?
   depositCents  Int?
   notes         String?
 

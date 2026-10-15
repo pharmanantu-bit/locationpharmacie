@@ -44,12 +44,14 @@ try {
 
   await signup("Pharmacie Test", `test-${stamp}@example.com`);
   check(await page.isVisible("text=Aucune location en cours"), "inscription puis tableau de bord vide");
+  check(await page.isVisible("text=0 sur 10"), "guide Bien démarrer : 0 sur 10 au départ");
 
   // Paramètres : durée et caution par défaut du tire-lait, rattaché au catalogue commun
   await page.goto(`${BASE}/app/parametres`);
   const row = page.locator("form", { has: page.locator('input[name="name"][value="Tire-lait"]') });
   check((await row.locator('[name="catalogueId"] option:checked').textContent()) === "Tire-lait", "type par défaut rattaché au catalogue");
   await row.locator('[name="defaultDurationDays"]').fill("28");
+  await row.locator('[name="price"]').fill("12,50");
   await row.locator('[name="deposit"]').fill("150");
   await row.locator("text=Enregistrer").click();
   await page.waitForLoadState("networkidle");
@@ -74,6 +76,7 @@ try {
   await page.check('[name="smsConsent"]');
   await page.selectOption('[name="typeId"]', { label: "Tire-lait" });
   check((await page.inputValue('[name="deposit"]')) === "150", "caution par défaut reprise du type");
+  check((await page.inputValue('[name="price"]')) === "12.5", "tarif par défaut repris du type");
   check((await page.inputValue('[name="prescriptionDurationDays"]')) === "28", "durée par défaut reprise du type");
   await page.click("button:has-text('Suivant')");
   check(await page.isVisible("text=D'où vient le matériel"), "étape 2 : source du matériel");
@@ -106,6 +109,21 @@ try {
   const docRes = await page.request.get(`${BASE}${docHref}`);
   check(docRes.status() === 200 && docRes.headers()["content-type"] === "application/pdf", "ordonnance téléchargeable en PDF");
 
+  // Étape 5 : contrat PDF pré-rempli, conservé avec le dossier
+  check(await page.isVisible("text=Aucun contrat généré"), "contrat : rien de généré au départ");
+  await page.click("button:has-text('Générer le contrat')");
+  await page.waitForSelector("text=Contrat généré (contrat-LOC-");
+  check(await page.isVisible("button:has-text('Régénérer le contrat')"), "contrat généré, régénération proposée");
+  const contractHref = await page.locator('a[href^="/app/documents/"]:has-text("contrat-LOC-")').first().getAttribute("href");
+  const contractRes = await page.request.get(`${BASE}${contractHref}`);
+  const contractBody = await contractRes.body();
+  check(
+    contractRes.status() === 200 && contractRes.headers()["content-type"] === "application/pdf" && contractBody.subarray(0, 4).toString() === "%PDF",
+    `contrat téléchargeable en PDF (${Math.round(contractBody.length / 1024)} Ko)`,
+  );
+  check(await page.isVisible("text=à faire signer"), "parcours : étape contrat validée");
+  await shot("03b-contrat");
+
   await page.click("text=J'ai facturé dans le LGO");
   await page.waitForSelector("text=Période facturée dans le LGO");
   check(true, "période facturée tracée dans l'historique");
@@ -134,6 +152,15 @@ try {
   await page.waitForSelector("span:has-text('Disponible')");
   check(await page.isVisible("text=Nettoyage / désinfection"), "historique de vie : nettoyage tracé");
   await shot("05-appareil");
+
+  // Guide Bien démarrer : étapes déduites des données + étape cochée à la main
+  await page.goto(`${BASE}/app/bien-demarrer`);
+  check(await page.isVisible("text=4 sur 10"), "guide : tarifs, parc, dossier et contrat détectés (4 sur 10)");
+  await page.click("details:has-text('Prévenez votre équipe') summary");
+  await page.click("details:has-text('Prévenez votre équipe') button:has-text('Marquer comme fait')");
+  await page.waitForSelector("text=5 sur 10");
+  check(await page.isVisible("text=5 sur 10"), "guide : étape manuelle cochée (5 sur 10)");
+  await shot("06-bien-demarrer");
 
   // Cloisonnement : une autre pharmacie ne voit ni le dossier ni l'ordonnance
   await page.context().clearCookies();

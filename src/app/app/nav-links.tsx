@@ -49,8 +49,18 @@ function Icon({ name }: { name: string }) {
   );
 }
 
-export function NavLinks({ isOwner, badges }: { isOwner: boolean; badges: NavBadges }) {
+export function NavLinks({
+  isOwner,
+  badges,
+  onboarding,
+}: {
+  isOwner: boolean;
+  badges: NavBadges;
+  onboarding: { done: number; total: number };
+}) {
   const pathname = usePathname();
+  const onboardingActive = pathname.startsWith("/app/bien-demarrer");
+  const onboardingComplete = onboarding.done >= onboarding.total;
 
   function render(items: Item[]) {
     return items
@@ -101,6 +111,24 @@ export function NavLinks({ isOwner, badges }: { isOwner: boolean; badges: NavBad
         Gestion
       </p>
       {render(GESTION)}
+      <Link
+        href="/app/bien-demarrer"
+        className={`flex items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition lg:mt-auto lg:mb-2 ${
+          onboardingActive ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"
+        }`}
+      >
+        <svg viewBox="0 0 24 24" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 21V4h12l-2 4 2 4H5" />
+        </svg>
+        <span className="flex-1">Bien démarrer</span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+            onboardingComplete ? "bg-emerald-500/20 text-emerald-300" : "bg-brand-700/60 text-brand-50"
+          }`}
+        >
+          {onboardingComplete ? "✓" : `${onboarding.done}/${onboarding.total}`}
+        </span>
+      </Link>
     </nav>
   );
 }
