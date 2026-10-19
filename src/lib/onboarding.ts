@@ -54,7 +54,7 @@ export async function getOnboarding(pharmacyId: string): Promise<OnboardingProgr
       group: "setup",
       title: "Informations de la pharmacie",
       description: "Adresse, téléphone et e-mail figurent en en-tête des contrats remis aux patients.",
-      href: "/app/parametres#pharmacie",
+      href: "/app/parametres",
       cta: "Compléter",
       manual: false,
       done: !!pharmacy.address && !!pharmacy.phone,
@@ -66,7 +66,7 @@ export async function getOnboarding(pharmacyId: string): Promise<OnboardingProgr
       title: "Ajoutez votre équipe",
       description:
         "Chaque membre a son propre accès : les actions sont tracées à son nom dans l'historique des dossiers.",
-      href: "/app/parametres#equipe",
+      href: "/app/parametres#operateurs",
       cta: "Ajouter un membre",
       manual: false,
       done: members > 1,
@@ -78,7 +78,7 @@ export async function getOnboarding(pharmacyId: string): Promise<OnboardingProgr
       title: "Définissez vos tarifs par défaut",
       description:
         "Pour chaque type de matériel : périodicité de facturation, durée habituelle, tarif et caution. Ils pré-remplissent chaque nouveau dossier et le contrat.",
-      href: "/app/parametres#types",
+      href: "/app/parametres/preferences#types",
       cta: "Régler les tarifs",
       manual: false,
       done: types.some((t) => t.priceCents != null && t.depositCents != null),
@@ -101,7 +101,7 @@ export async function getOnboarding(pharmacyId: string): Promise<OnboardingProgr
       title: "Relisez les conditions du contrat",
       description:
         "Un modèle de conditions générales est fourni. Faites-le relire par votre conseil juridique, adaptez-le si besoin et renseignez votre SIRET.",
-      href: "/app/parametres#pharmacie",
+      href: "/app/parametres/preferences#contrat",
       cta: "Vérifier",
       manual: true,
       done: manual.has("contract-terms"),
@@ -114,7 +114,7 @@ export async function getOnboarding(pharmacyId: string): Promise<OnboardingProgr
       description: stripeReady
         ? "Le patient enregistre sa carte lui-même : plus de chèque de caution. Connectez votre compte Stripe en quelques minutes."
         : "Le patient enregistrera sa carte lui-même : plus de chèque de caution. Disponible dès que la clé Stripe de la plateforme sera configurée.",
-      href: "/app/parametres#stripe",
+      href: "/app/parametres/empreinte-bancaire",
       cta: "Connecter Stripe",
       manual: false,
       done: !!pharmacy.stripeAccountId,

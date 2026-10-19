@@ -11,8 +11,8 @@ async function onboardingUrl(accountId: string) {
   const link = await stripe!.accountLinks.create({
     account: accountId,
     type: "account_onboarding",
-    refresh_url: `${appUrl()}/app/parametres?stripe=reprendre`,
-    return_url: `${appUrl()}/app/parametres?stripe=retour`,
+    refresh_url: `${appUrl()}/app/parametres/empreinte-bancaire?stripe=reprendre`,
+    return_url: `${appUrl()}/app/parametres/empreinte-bancaire?stripe=retour`,
   });
   return link.url;
 }
@@ -20,7 +20,7 @@ async function onboardingUrl(accountId: string) {
 // Crée (si besoin) le compte Stripe Connect de la pharmacie puis envoie vers l'onboarding
 export async function connectStripe() {
   const user = await requireOwner();
-  if (!stripe) redirect("/app/parametres?stripe=non-configure");
+  if (!stripe) redirect("/app/parametres/empreinte-bancaire?stripe=non-configure");
 
   const pharmacy = await db.pharmacy.findUniqueOrThrow({ where: { id: user.pharmacyId } });
   let accountId = pharmacy.stripeAccountId;
@@ -47,8 +47,8 @@ export async function disconnectStripe() {
   const open = await db.deposit.count({
     where: { pharmacyId: user.pharmacyId, status: { in: ["PENDING", "AUTHORIZED"] } },
   });
-  if (open > 0) redirect("/app/parametres?stripe=cautions-ouvertes");
+  if (open > 0) redirect("/app/parametres/empreinte-bancaire?stripe=cautions-ouvertes");
   await db.pharmacy.update({ where: { id: user.pharmacyId }, data: { stripeAccountId: null } });
-  revalidatePath("/app/parametres");
-  redirect("/app/parametres?stripe=deconnecte");
+  revalidatePath("/app/parametres/empreinte-bancaire");
+  redirect("/app/parametres/empreinte-bancaire?stripe=deconnecte");
 }

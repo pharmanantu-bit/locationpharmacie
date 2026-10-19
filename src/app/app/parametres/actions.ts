@@ -31,11 +31,20 @@ export async function updatePharmacy(_prev: SettingsFormState, formData: FormDat
       phone: text(formData, "phone"),
       email: text(formData, "email"),
       siret: text(formData, "siret"),
-      contractTerms: text(formData, "contractTerms"),
     },
   });
   revalidatePath("/app", "layout");
   return { ok: "Informations enregistrées." };
+}
+
+export async function updateContractTerms(_prev: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
+  const user = await requireOwner();
+  await db.pharmacy.update({
+    where: { id: user.pharmacyId },
+    data: { contractTerms: text(formData, "contractTerms") },
+  });
+  revalidatePath("/app", "layout");
+  return { ok: "Conditions du contrat enregistrées." };
 }
 
 async function readType(formData: FormData) {
@@ -105,6 +114,73 @@ export async function addMember(_prev: SettingsFormState, formData: FormData): P
   });
   revalidatePath("/app/parametres");
   return { ok: `${name} peut maintenant se connecter avec ${email} et le mot de passe provisoire.` };
+}
+
+const memberUpdateSchema = z.object({
+  userId: z.string().min(1),
+  name: z.string().trim().min(2, "Indiquez le nom."),
+  password: z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v === "" || v.length >= 10, "Le nouveau mot de passe doit contenir au moins 10 caractères."),
+});
+
+// Modification d'un opérateur par l'administrateur : nom et, au besoin, nouveau mot de passe
+export async function updateMember(_prev: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
+  const user = await requireOwner();
+  const parsed = memberUpdateSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const { userId, name, password } = parsed.data;
+  const member = await db.user.findFirst({ where: { id: userId, pharmacyId: user.pharmacyId, role: "MEMBER" } });
+  if (!member) return { error: "Opérateur introuvable." };
+  await db.user.update({
+    where: { id: member.id },
+    data: { name, ...(password ? { passwordHash: await bcrypt.hash(password, 12) } : {}) },
+  });
+  if (password) {
+    // Un mot de passe réinitialisé ferme les sessions ouvertes de l'opérateur
+    await db.session.deleteMany({ where: { userId: member.id } });
+  }
+  revalidatePath("/app/parametres");
+  return { ok: password ? `${name} : nom et mot de passe mis à jour.` : `${name} : nom mis à jour.` };
+}
+
+const accountSchema = z.object({
+  name: z.string().trim().min(2, "Indiquez votre nom."),
+  email: z.email("Adresse e-mail invalide.").trim().toLowerCase(),
+});
+
+// Compte de l'administrateur connecté : nom et adresse de connexion
+export async function updateAccount(_prev: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
+  const user = await requireOwner();
+  const parsed = accountSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const { name, email } = parsed.data;
+  const taken = await db.user.findUnique({ where: { email } });
+  if (taken && taken.id !== user.id) return { error: "Un autre compte utilise déjà cette adresse." };
+  await db.user.update({ where: { id: user.id }, data: { name, email } });
+  revalidatePath("/app", "layout");
+  return { ok: "Compte mis à jour." };
+}
+
+const passwordSchema = z
+  .object({
+    current: z.string().min(1, "Saisissez votre mot de passe actuel."),
+    password: z.string().min(10, "Le nouveau mot de passe doit contenir au moins 10 caractères."),
+    confirm: z.string(),
+  })
+  .refine((v) => v.password === v.confirm, { message: "Les deux saisies du nouveau mot de passe diffèrent.", path: ["confirm"] });
+
+export async function changePassword(_prev: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
+  const user = await requireOwner();
+  const parsed = passwordSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const account = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+  if (!(await bcrypt.compare(parsed.data.current, account.passwordHash))) {
+    return { error: "Le mot de passe actuel est incorrect." };
+  }
+  await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(parsed.data.password, 12) } });
+  return { ok: "Mot de passe modifié." };
 }
 
 export async function removeMember(formData: FormData) {

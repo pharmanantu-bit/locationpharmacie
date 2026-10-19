@@ -46,7 +46,7 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
 
         <div className="mx-4 mb-3 hidden rounded-lg bg-white/5 px-3 py-2 lg:block">
           <p className="truncate text-sm font-semibold text-white">{user.pharmacyName}</p>
-          <p className="text-xs text-slate-400">{user.role === "OWNER" ? "Administrateur" : "Équipe"}</p>
+          <p className="text-xs text-slate-400">{user.role === "OWNER" ? "Administrateur" : "Opérateur"}</p>
         </div>
 
         <form action="/app/dossiers" className="mx-4 mb-3 hidden lg:block">

@@ -47,7 +47,7 @@ try {
   check(await page.isVisible("text=0 sur 10"), "guide Bien démarrer : 0 sur 10 au départ");
 
   // Paramètres : durée et caution par défaut du tire-lait, rattaché au catalogue commun
-  await page.goto(`${BASE}/app/parametres`);
+  await page.goto(`${BASE}/app/parametres/preferences`);
   const row = page.locator("form", { has: page.locator('input[name="name"][value="Tire-lait"]') });
   check((await row.locator('[name="catalogueId"] option:checked').textContent()) === "Tire-lait", "type par défaut rattaché au catalogue");
   await row.locator('[name="defaultDurationDays"]').fill("28");

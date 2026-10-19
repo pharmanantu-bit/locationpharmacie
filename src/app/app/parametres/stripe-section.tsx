@@ -1,6 +1,7 @@
 import { SubmitButton } from "@/components/submit-button";
 import { FormError, Notice } from "@/components/ui";
 import type { ConnectStatus } from "@/lib/stripe";
+import { SettingsCard } from "./settings-ui";
 import { connectStripe, disconnectStripe } from "./stripe-actions";
 
 const MESSAGES: Record<string, { ok?: string; error?: string }> = {
@@ -28,22 +29,18 @@ export function StripeSection({
   const ready = !!status?.chargesEnabled && !!status?.detailsSubmitted;
 
   return (
-    <section className="card p-5">
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <h2 className="font-semibold text-slate-900">Cautions par empreinte bancaire (Stripe)</h2>
-        {mode === "test" && (
+    <SettingsCard
+      id="stripe"
+      title="Cautions par empreinte bancaire"
+      badge={
+        mode === "test" ? (
           <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-amber-800 uppercase ring-1 ring-amber-200">
             Mode test
           </span>
-        )}
-      </div>
-      <p className="mb-4 text-sm text-slate-500">
-        Reliez le compte Stripe de la pharmacie pour enregistrer l&apos;empreinte bancaire des patients (aucun chèque,
-        aucun espèces) et débiter tout ou partie de la caution en cas de non-restitution. L&apos;argent va directement
-        sur votre compte Stripe ; la plateforme n&apos;y touche jamais. Stripe prélève environ 3 % uniquement si un
-        débit a lieu.
-      </p>
-
+        ) : undefined
+      }
+      description="Reliez le compte Stripe de la pharmacie pour enregistrer l'empreinte bancaire des patients (aucun chèque, aucune espèce) et débiter tout ou partie de la caution en cas de non-restitution. L'argent va directement sur votre compte Stripe ; la plateforme n'y touche jamais. Stripe prélève environ 3 % uniquement si un débit a lieu."
+    >
       {msg?.error && <FormError message={msg.error} />}
       {msg?.ok && <Notice>{msg.ok}</Notice>}
 
@@ -116,7 +113,7 @@ export function StripeSection({
           </div>
         </div>
       )}
-    </section>
+    </SettingsCard>
   );
 }
 
